@@ -2,7 +2,8 @@
 
 Fast, lightweight and interactive binary entropy visualizer with an hex viewer and a PNG exporter.
 
-![Dark theme export](exports/bash-dark.png)
+![GUI](images/gui.png)
+![Dark theme export](images/bash-dark.png)
 
 ## Features
 
@@ -91,8 +92,8 @@ graphtropy firmware.bin -e clean.png --no-caption
 Two built-in themes: Dark and Light.
 
 <p float="left">
-  <img src="exports/bash-dark.png" width="49%" />
-  <img src="exports/bash-light.png" width="49%" />
+  <img src="images/bash-dark.png" width="49%" />
+  <img src="images/bash-light.png" width="49%" />
 </p>
 
 Custom themes live in `~/.config/graphtropy/themes/` as TOML files:
