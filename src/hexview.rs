@@ -74,6 +74,9 @@ pub fn render(
         if ui.input(|i| i.key_pressed(egui::Key::PageUp)) {
             *first_row = first_row.saturating_sub(page);
         }
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            *selection = None;
+        }
     }
 
     *first_row = (*first_row).min(max_first_row);

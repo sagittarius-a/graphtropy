@@ -371,11 +371,21 @@ impl eframe::App for App {
                 let name = self.file_info.path.file_name()
                     .unwrap_or_default()
                     .to_string_lossy();
-                ui.label(format!(
+                let mut status = format!(
                     "{name} | {} | Cursor: 0x{:X}",
                     format_size(self.file_info.size),
                     self.cursor_offset,
-                ));
+                );
+                if let Some((a, b)) = self.hex_selection {
+                    let lo = a.min(b);
+                    let hi = a.max(b);
+                    let count = hi - lo + 1;
+                    status.push_str(&format!(
+                        " | Sel: 0x{lo:X}..0x{hi:X} ({count} byte{})",
+                        if count == 1 { "" } else { "s" },
+                    ));
+                }
+                ui.label(status);
             });
         });
 

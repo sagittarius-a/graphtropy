@@ -18,23 +18,25 @@ Fast, lightweight and interactive binary entropy visualizer with an hex viewer a
 
 ## Install
 
+```bash
+./install.sh
+```
+
+This builds and installs the binary via `cargo install`, and sets up the `.desktop` file and icon so graphtropy appears in your application launcher and can open files from your file manager.
+
+To only build the binary without desktop integration:
+
 ```
 cargo install --path .
-```
-
-Or just build it:
-
-```
-cargo build --release
 ```
 
 ## Usage
 
 ```
-graphtropy <file>
+graphtropy [file]
 ```
 
-Opens the GUI. Click anywhere on the entropy plot to jump the hex viewer to that offset. Scroll the hex viewer and the plot cursor follows.
+Opens the GUI. If no file is given, a file picker dialog is shown. Click anywhere on the entropy plot to jump the hex viewer to that offset. Scroll the hex viewer and the plot cursor follows.
 
 ### Keyboard shortcuts
 
@@ -53,7 +55,7 @@ Opens the GUI. Click anywhere on the entropy plot to jump the hex viewer to that
 ### CLI options
 
 ```
-graphtropy <file> [OPTIONS]
+graphtropy [file] [OPTIONS]
 
 Options:
   -b, --block-size <N>    Block size in bytes [default: 256]

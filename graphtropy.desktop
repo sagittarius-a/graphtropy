@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Graphtropy
+Comment=Binary entropy visualizer
+Exec=@BINPATH@ %f
+Icon=@ICONPATH@
+Terminal=false
+Type=Application
+Categories=Development;Utility;
+MimeType=application/octet-stream;

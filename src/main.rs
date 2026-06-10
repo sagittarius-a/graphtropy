@@ -15,8 +15,8 @@ mod plot;
 #[derive(Parser)]
 #[command(name = "graphtropy", about = "Interactive binary entropy visualizer")]
 struct Cli {
-    /// Path to binary file
-    file: PathBuf,
+    /// Path to binary file (opens file dialog if omitted)
+    file: Option<PathBuf>,
 
     /// Block size in bytes
     #[arg(short, long, default_value_t = 256)]
@@ -82,8 +82,21 @@ pub fn auto_adapt(file_size: usize, block_size: usize, step: usize) -> (usize, u
 fn main() -> eframe::Result {
     let cli = Cli::parse();
 
-    let file = File::open(&cli.file).unwrap_or_else(|e| {
-        eprintln!("Error opening {}: {e}", cli.file.display());
+    let file_path = match cli.file {
+        Some(p) => p,
+        None => {
+            let picked = rfd::FileDialog::new()
+                .set_title("Open file")
+                .pick_file();
+            match picked {
+                Some(p) => p,
+                None => std::process::exit(0),
+            }
+        }
+    };
+
+    let file = File::open(&file_path).unwrap_or_else(|e| {
+        eprintln!("Error opening {}: {e}", file_path.display());
         std::process::exit(1);
     });
 
@@ -117,7 +130,7 @@ fn main() -> eframe::Result {
         } else {
             let mut parts = Vec::new();
             if !cli.no_filename {
-                let name = cli.file.file_name()
+                let name = file_path.file_name()
                     .unwrap_or_default()
                     .to_string_lossy()
                     .to_string();
@@ -157,14 +170,14 @@ fn main() -> eframe::Result {
 
     // GUI mode: compute in background, show spinner
     let file_info = app::FileInfo {
-        path: cli.file.clone(),
+        path: file_path.clone(),
         size: mmap.len() as u64,
         block_size: cli.block_size,
         step: user_step,
     };
 
     let mmap = Arc::new(mmap);
-    let title = format!("graphtropy - {}", cli.file.display());
+    let title = format!("graphtropy - {}", file_path.display());
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
