@@ -1,0 +1,15 @@
+name = "Monokai"
+
+[dark]
+null = "#5F5F55"
+whitespace = "#66D9EF"
+printable_ascii = "#A6E22E"
+control_ascii = "#F92672"
+non_ascii = "#FD971F"
+
+[light]
+null = "#828278"
+whitespace = "#147896"
+printable_ascii = "#4B8200"
+control_ascii = "#B91E55"
+non_ascii = "#B45A00"

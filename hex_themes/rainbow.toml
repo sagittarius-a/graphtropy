@@ -1,0 +1,15 @@
+name = "Rainbow"
+
+[dark]
+null = "#5A5A5A"
+whitespace = "#50AAFF"
+printable_ascii = "#5FDC5F"
+control_ascii = "#BE73FF"
+non_ascii = "#FF7850"
+
+[light]
+null = "#8C8C8C"
+whitespace = "#145FBE"
+printable_ascii = "#14872D"
+control_ascii = "#7D46B9"
+non_ascii = "#BE411E"

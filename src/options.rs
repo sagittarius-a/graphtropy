@@ -32,6 +32,15 @@ fn darken(c: Color32, amount: u8) -> Color32 {
 }
 
 #[derive(Clone)]
+pub struct HexPalette {
+    pub null: Color32,
+    pub whitespace: Color32,
+    pub printable: Color32,
+    pub control: Color32,
+    pub non_ascii: Color32,
+}
+
+#[derive(Clone)]
 pub struct ColorTheme {
     pub name: String,
     pub bands: Vec<(f64, Color32)>,
@@ -40,6 +49,7 @@ pub struct ColorTheme {
     pub grid: Color32,
     pub caption: Color32,
     pub dark: bool,
+    pub hex: HexPalette,
 }
 
 impl ColorTheme {
@@ -114,6 +124,13 @@ impl ColorTheme {
             grid: Color32::from_rgb(50, 50, 50),
             caption: Color32::from_rgb(200, 200, 200),
             dark: true,
+            hex: HexPalette {
+                null: Color32::from_rgb(90, 90, 90),
+                whitespace: Color32::from_rgb(80, 170, 255),
+                printable: Color32::from_rgb(95, 220, 95),
+                control: Color32::from_rgb(190, 115, 255),
+                non_ascii: Color32::from_rgb(255, 120, 80),
+            },
         }
     }
 
@@ -131,6 +148,61 @@ impl ColorTheme {
             grid: Color32::from_rgb(200, 200, 200),
             caption: Color32::from_rgb(40, 40, 40),
             dark: false,
+            hex: HexPalette {
+                null: Color32::from_rgb(140, 140, 140),
+                whitespace: Color32::from_rgb(20, 95, 190),
+                printable: Color32::from_rgb(20, 135, 45),
+                control: Color32::from_rgb(125, 70, 185),
+                non_ascii: Color32::from_rgb(190, 65, 30),
+            },
+        }
+    }
+
+    fn gruvbox_dark() -> Self {
+        ColorTheme {
+            name: "Gruvbox Dark".to_string(),
+            bands: vec![
+                (0.0, Color32::from_rgb(69, 133, 136)),
+                (0.25, Color32::from_rgb(152, 151, 26)),
+                (0.625, Color32::from_rgb(214, 93, 14)),
+                (0.875, Color32::from_rgb(204, 36, 29)),
+            ],
+            bg: Color32::from_rgb(40, 40, 40),
+            text: Color32::from_rgb(189, 174, 147),
+            grid: Color32::from_rgb(80, 73, 69),
+            caption: Color32::from_rgb(235, 219, 178),
+            dark: true,
+            hex: HexPalette {
+                null: Color32::from_rgb(102, 92, 84),
+                whitespace: Color32::from_rgb(131, 165, 152),
+                printable: Color32::from_rgb(184, 187, 38),
+                control: Color32::from_rgb(211, 134, 155),
+                non_ascii: Color32::from_rgb(254, 128, 25),
+            },
+        }
+    }
+
+    fn gruvbox_light() -> Self {
+        ColorTheme {
+            name: "Gruvbox Light".to_string(),
+            bands: vec![
+                (0.0, Color32::from_rgb(7, 102, 120)),
+                (0.25, Color32::from_rgb(121, 116, 14)),
+                (0.625, Color32::from_rgb(175, 58, 3)),
+                (0.875, Color32::from_rgb(157, 0, 6)),
+            ],
+            bg: Color32::from_rgb(251, 241, 199),
+            text: Color32::from_rgb(80, 73, 69),
+            grid: Color32::from_rgb(213, 196, 161),
+            caption: Color32::from_rgb(60, 56, 54),
+            dark: false,
+            hex: HexPalette {
+                null: Color32::from_rgb(168, 153, 132),
+                whitespace: Color32::from_rgb(7, 102, 120),
+                printable: Color32::from_rgb(121, 116, 14),
+                control: Color32::from_rgb(143, 63, 113),
+                non_ascii: Color32::from_rgb(175, 58, 3),
+            },
         }
     }
 
@@ -178,12 +250,22 @@ struct ThemeFile {
     grid: Option<String>,
     caption: Option<String>,
     dark: Option<bool>,
+    hex: Option<HexPaletteFile>,
 }
 
 #[derive(Deserialize)]
 struct BandEntry {
     threshold: f64,
     color: String,
+}
+
+#[derive(Deserialize)]
+struct HexPaletteFile {
+    null: Option<String>,
+    whitespace: Option<String>,
+    printable: Option<String>,
+    control: Option<String>,
+    non_ascii: Option<String>,
 }
 
 fn parse_hex_color(s: &str) -> Option<Color32> {
@@ -364,6 +446,7 @@ pub fn load_themes() -> Vec<ColorTheme> {
                     if !bands.is_empty() {
                         let dark = tf.dark.unwrap_or(true);
                         let base = if dark { ColorTheme::dark() } else { ColorTheme::light() };
+                        let hex_file = tf.hex.as_ref();
                         themes.push(ColorTheme {
                             name: tf.name,
                             bands,
@@ -372,6 +455,13 @@ pub fn load_themes() -> Vec<ColorTheme> {
                             grid: tf.grid.as_deref().and_then(parse_hex_color).unwrap_or(base.grid),
                             caption: tf.caption.as_deref().and_then(parse_hex_color).unwrap_or(base.caption),
                             dark,
+                            hex: HexPalette {
+                                null: hex_file.and_then(|h| h.null.as_deref()).and_then(parse_hex_color).unwrap_or(base.hex.null),
+                                whitespace: hex_file.and_then(|h| h.whitespace.as_deref()).and_then(parse_hex_color).unwrap_or(base.hex.whitespace),
+                                printable: hex_file.and_then(|h| h.printable.as_deref()).and_then(parse_hex_color).unwrap_or(base.hex.printable),
+                                control: hex_file.and_then(|h| h.control.as_deref()).and_then(parse_hex_color).unwrap_or(base.hex.control),
+                                non_ascii: hex_file.and_then(|h| h.non_ascii.as_deref()).and_then(parse_hex_color).unwrap_or(base.hex.non_ascii),
+                            },
                         });
                     }
                 }
@@ -387,6 +477,7 @@ pub struct Options {
     pub block_size: usize,
     pub step: usize,
     pub theme_index: usize,
+    pub hex_byte_colors: bool,
     pub needs_recompute: bool,
     pub custom_block_input: String,
     pub custom_step_input: String,
@@ -400,6 +491,7 @@ impl Options {
             block_size,
             step,
             theme_index: 0,
+            hex_byte_colors: true,
             needs_recompute: false,
             custom_block_input: String::new(),
             custom_step_input: String::new(),
@@ -510,6 +602,7 @@ impl Options {
                     ui.selectable_value(&mut self.theme_index, i, &name);
                 }
             });
+        ui.checkbox(&mut self.hex_byte_colors, "Hex byte colors");
         if let Some(dir) = themes_dir() {
             ui.label(
                 egui::RichText::new(format!("Themes: {}", dir.display()))

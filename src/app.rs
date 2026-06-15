@@ -435,6 +435,11 @@ impl eframe::App for App {
             ui.separator();
 
             // Hex viewer (fills remaining space)
+            let hex_palette = if self.options.hex_byte_colors {
+                Some(&self.options.theme().hex)
+            } else {
+                None
+            };
             let hex_offset = crate::hexview::render(
                 ui,
                 &self.mmap,
@@ -442,6 +447,7 @@ impl eframe::App for App {
                 &mut self.hex_first_row,
                 &mut self.hex_focused,
                 &mut self.hex_selection,
+                hex_palette,
             );
 
             if self.sync_cooldown > 0 {

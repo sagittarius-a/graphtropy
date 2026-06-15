@@ -1,6 +1,36 @@
 use egui::{Color32, Rect, Sense, TextStyle, pos2, vec2};
 
+use crate::options::HexPalette;
+
 const BYTES_PER_ROW: usize = 16;
+
+enum ByteClass {
+    Null,
+    Whitespace,
+    Printable,
+    Control,
+    NonAscii,
+}
+
+fn byte_class(byte: u8) -> ByteClass {
+    match byte {
+        0x00 => ByteClass::Null,
+        b'\t' | b'\n' | b'\r' | 0x0b | 0x0c | b' ' => ByteClass::Whitespace,
+        0x21..=0x7e => ByteClass::Printable,
+        0x01..=0x1f | 0x7f => ByteClass::Control,
+        _ => ByteClass::NonAscii,
+    }
+}
+
+fn byte_color(byte: u8, palette: &HexPalette) -> Color32 {
+    match byte_class(byte) {
+        ByteClass::Null => palette.null,
+        ByteClass::Whitespace => palette.whitespace,
+        ByteClass::Printable => palette.printable,
+        ByteClass::Control => palette.control,
+        ByteClass::NonAscii => palette.non_ascii,
+    }
+}
 
 fn hex_str(b: u8) -> &'static str {
     static TABLE: std::sync::OnceLock<[String; 256]> = std::sync::OnceLock::new();
@@ -15,6 +45,7 @@ pub fn render(
     first_row: &mut usize,
     focused: &mut bool,
     selection: &mut Option<(usize, usize)>,
+    hex_palette: Option<&HexPalette>,
 ) -> u64 {
     let total_rows = data.len().div_ceil(BYTES_PER_ROW);
     let font_size = ui.text_style_height(&TextStyle::Monospace);
@@ -35,8 +66,6 @@ pub fn render(
         pos2(hex_rect.max.x - scrollbar_w, hex_rect.min.y),
         hex_rect.max,
     );
-
-    // Claim the full area (hover only - interaction handled below)
 
     // Layout positions
     let offset_x = content_rect.left();
@@ -205,6 +234,8 @@ pub fn render(
 
             let color = if is_selected {
                 strong
+            } else if let Some(palette) = hex_palette {
+                byte_color(byte, palette)
             } else if is_cursor_row {
                 strong
             } else {
@@ -235,6 +266,8 @@ pub fn render(
             };
             let color = if is_selected {
                 strong
+            } else if let Some(palette) = hex_palette {
+                byte_color(byte, palette)
             } else if is_cursor_row {
                 highlight
             } else {

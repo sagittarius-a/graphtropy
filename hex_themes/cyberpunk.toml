@@ -1,0 +1,15 @@
+name = "Cyberpunk"
+
+[dark]
+null = "#5A5078"
+whitespace = "#00DCFF"
+printable_ascii = "#FF50DC"
+control_ascii = "#AA5FFF"
+non_ascii = "#FFDC46"
+
+[light]
+null = "#73649B"
+whitespace = "#0078AF"
+printable_ascii = "#B91491"
+control_ascii = "#7337BE"
+non_ascii = "#AF8200"
