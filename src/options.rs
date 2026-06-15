@@ -15,6 +15,22 @@ fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
     )
 }
 
+fn lighten(c: Color32, amount: u8) -> Color32 {
+    Color32::from_rgb(
+        c.r().saturating_add(amount),
+        c.g().saturating_add(amount),
+        c.b().saturating_add(amount),
+    )
+}
+
+fn darken(c: Color32, amount: u8) -> Color32 {
+    Color32::from_rgb(
+        c.r().saturating_sub(amount),
+        c.g().saturating_sub(amount),
+        c.b().saturating_sub(amount),
+    )
+}
+
 #[derive(Clone)]
 pub struct ColorTheme {
     pub name: String,
@@ -47,6 +63,41 @@ impl ColorTheme {
             }
         }
         self.bands.last().unwrap().1
+    }
+
+    pub fn to_visuals(&self) -> egui::Visuals {
+        let mut v = if self.dark {
+            egui::Visuals::dark()
+        } else {
+            egui::Visuals::light()
+        };
+
+        v.panel_fill = self.bg;
+        v.window_fill = self.bg;
+        v.override_text_color = Some(self.text);
+
+        if self.dark {
+            v.extreme_bg_color = darken(self.bg, 10);
+            v.faint_bg_color = lighten(self.bg, 5);
+            v.widgets.inactive.bg_fill = lighten(self.bg, 20);
+            v.widgets.hovered.bg_fill = lighten(self.bg, 35);
+            v.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, lighten(self.grid, 20));
+            v.widgets.active.bg_fill = lighten(self.bg, 45);
+        } else {
+            v.extreme_bg_color = lighten(self.bg, 10);
+            v.faint_bg_color = darken(self.bg, 5);
+            v.widgets.inactive.bg_fill = darken(self.bg, 15);
+            v.widgets.hovered.bg_fill = darken(self.bg, 25);
+            v.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, darken(self.grid, 20));
+            v.widgets.active.bg_fill = darken(self.bg, 35);
+        }
+
+        v.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, self.grid);
+        v.widgets.noninteractive.bg_fill = self.bg;
+        v.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, self.grid);
+        v.window_stroke = egui::Stroke::new(1.0, self.grid);
+
+        v
     }
 
     fn dark() -> Self {
@@ -82,12 +133,51 @@ impl ColorTheme {
             dark: false,
         }
     }
+
+    fn gruvbox_dark() -> Self {
+        ColorTheme {
+            name: "Gruvbox Dark".to_string(),
+            bands: vec![
+                (0.0, Color32::from_rgb(69, 133, 136)),   // aqua
+                (0.25, Color32::from_rgb(152, 151, 26)),   // green
+                (0.625, Color32::from_rgb(214, 93, 14)),   // orange
+                (0.875, Color32::from_rgb(204, 36, 29)),   // red
+            ],
+            bg: Color32::from_rgb(40, 40, 40),             // bg0
+            text: Color32::from_rgb(189, 174, 147),        // fg3
+            grid: Color32::from_rgb(80, 73, 69),           // bg2
+            caption: Color32::from_rgb(235, 219, 178),     // fg1
+            dark: true,
+        }
+    }
+
+    fn gruvbox_light() -> Self {
+        ColorTheme {
+            name: "Gruvbox Light".to_string(),
+            bands: vec![
+                (0.0, Color32::from_rgb(7, 102, 120)),     // aqua
+                (0.25, Color32::from_rgb(121, 116, 14)),    // green
+                (0.625, Color32::from_rgb(175, 58, 3)),     // orange
+                (0.875, Color32::from_rgb(157, 0, 6)),      // red
+            ],
+            bg: Color32::from_rgb(251, 241, 199),           // bg0
+            text: Color32::from_rgb(80, 73, 69),            // fg2
+            grid: Color32::from_rgb(213, 196, 161),         // bg2
+            caption: Color32::from_rgb(60, 56, 54),         // fg1
+            dark: false,
+        }
+    }
 }
 
 #[derive(Deserialize)]
 struct ThemeFile {
     name: String,
     bands: Vec<BandEntry>,
+    bg: Option<String>,
+    text: Option<String>,
+    grid: Option<String>,
+    caption: Option<String>,
+    dark: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -120,6 +210,11 @@ fn ensure_default_themes() {
         let _ = fs::write(
             dark_path,
             r##"name = "Dark"
+dark = true
+bg = "#1E1E1E"
+text = "#A0A0A0"
+grid = "#323232"
+caption = "#C8C8C8"
 
 [[bands]]
 threshold = 0.0
@@ -145,6 +240,11 @@ color = "#F44336"
         let _ = fs::write(
             light_path,
             r##"name = "Light"
+dark = false
+bg = "#F5F5F5"
+text = "#3C3C3C"
+grid = "#C8C8C8"
+caption = "#282828"
 
 [[bands]]
 threshold = 0.0
@@ -165,6 +265,66 @@ color = "#B71C1C"
         );
     }
 
+    let gruvbox_dark_path = dir.join("gruvbox-dark.toml");
+    if !gruvbox_dark_path.exists() {
+        let _ = fs::write(
+            gruvbox_dark_path,
+            r##"name = "Gruvbox Dark"
+dark = true
+bg = "#282828"
+text = "#BDAE93"
+grid = "#504945"
+caption = "#EBDBB2"
+
+[[bands]]
+threshold = 0.0
+color = "#458588"
+
+[[bands]]
+threshold = 0.25
+color = "#98971A"
+
+[[bands]]
+threshold = 0.625
+color = "#D65D0E"
+
+[[bands]]
+threshold = 0.875
+color = "#CC241D"
+"##,
+        );
+    }
+
+    let gruvbox_light_path = dir.join("gruvbox-light.toml");
+    if !gruvbox_light_path.exists() {
+        let _ = fs::write(
+            gruvbox_light_path,
+            r##"name = "Gruvbox Light"
+dark = false
+bg = "#FBF1C7"
+text = "#504945"
+grid = "#D5C4A1"
+caption = "#3C3836"
+
+[[bands]]
+threshold = 0.0
+color = "#076678"
+
+[[bands]]
+threshold = 0.25
+color = "#79740E"
+
+[[bands]]
+threshold = 0.625
+color = "#AF3A03"
+
+[[bands]]
+threshold = 0.875
+color = "#9D0006"
+"##,
+        );
+    }
+
     // Remove old "classic.toml" if it exists
     let classic_path = dir.join("classic.toml");
     if classic_path.exists() {
@@ -174,7 +334,12 @@ color = "#B71C1C"
 
 pub fn load_themes() -> Vec<ColorTheme> {
     ensure_default_themes();
-    let mut themes = vec![ColorTheme::dark(), ColorTheme::light()];
+    let mut themes = vec![
+        ColorTheme::dark(),
+        ColorTheme::light(),
+        ColorTheme::gruvbox_dark(),
+        ColorTheme::gruvbox_light(),
+    ];
 
     let Some(dir) = themes_dir() else {
         return themes;
@@ -188,7 +353,7 @@ pub fn load_themes() -> Vec<ColorTheme> {
         if path.extension().is_some_and(|e| e == "toml") {
             if let Ok(contents) = fs::read_to_string(&path) {
                 if let Ok(tf) = toml::from_str::<ThemeFile>(&contents) {
-                    if tf.name == "Dark" || tf.name == "Light" {
+                    if themes.iter().any(|t| t.name == tf.name) {
                         continue;
                     }
                     let bands: Vec<(f64, Color32)> = tf
@@ -197,10 +362,16 @@ pub fn load_themes() -> Vec<ColorTheme> {
                         .filter_map(|b| parse_hex_color(&b.color).map(|c| (b.threshold, c)))
                         .collect();
                     if !bands.is_empty() {
+                        let dark = tf.dark.unwrap_or(true);
+                        let base = if dark { ColorTheme::dark() } else { ColorTheme::light() };
                         themes.push(ColorTheme {
                             name: tf.name,
                             bands,
-                            ..ColorTheme::dark()
+                            bg: tf.bg.as_deref().and_then(parse_hex_color).unwrap_or(base.bg),
+                            text: tf.text.as_deref().and_then(parse_hex_color).unwrap_or(base.text),
+                            grid: tf.grid.as_deref().and_then(parse_hex_color).unwrap_or(base.grid),
+                            caption: tf.caption.as_deref().and_then(parse_hex_color).unwrap_or(base.caption),
+                            dark,
                         });
                     }
                 }
@@ -329,24 +500,16 @@ impl Options {
 
         ui.separator();
         ui.label("Theme");
-        let theme_count = self.themes.len();
-        for i in 0..theme_count {
-            let selected = self.theme_index == i;
-            let name = self.themes[i].name.clone();
-            if ui.selectable_label(selected, &name).clicked() {
-                self.theme_index = i;
-            }
-            if selected {
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 2.0;
-                    for &(_, color) in &self.themes[i].bands {
-                        let (rect, _) =
-                            ui.allocate_exact_size(egui::vec2(16.0, 12.0), egui::Sense::hover());
-                        ui.painter().rect_filled(rect, 2.0, color);
-                    }
-                });
-            }
-        }
+        let current_name = self.themes[self.theme_index].name.clone();
+        egui::ComboBox::from_id_salt("theme_selector")
+            .selected_text(&current_name)
+            .width(ui.available_width() - 8.0)
+            .show_ui(ui, |ui| {
+                for i in 0..self.themes.len() {
+                    let name = self.themes[i].name.clone();
+                    ui.selectable_value(&mut self.theme_index, i, &name);
+                }
+            });
         if let Some(dir) = themes_dir() {
             ui.label(
                 egui::RichText::new(format!("Themes: {}", dir.display()))

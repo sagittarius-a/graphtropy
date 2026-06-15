@@ -317,22 +317,13 @@ impl eframe::App for App {
             ));
         }
 
-        if self.options.theme_index != self.cached_theme_index && !computing {
-            self.cached_gradient = build_gradient(&self.options);
-            self.cached_plot_points = build_plot_points(&self.entropy_data, &self.options);
-            self.cached_theme_index = self.options.theme_index;
-            let theme = self.options.theme();
-            if theme.dark {
-                ctx.set_visuals(egui::Visuals::dark());
-            } else {
-                let mut v = egui::Visuals::light();
-                v.extreme_bg_color = egui::Color32::WHITE;
-                v.widgets.inactive.bg_fill = egui::Color32::from_gray(230);
-                v.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, egui::Color32::from_gray(180));
-                v.widgets.hovered.bg_fill = egui::Color32::from_gray(220);
-                v.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, egui::Color32::from_gray(140));
-                ctx.set_visuals(v);
+        if self.options.theme_index != self.cached_theme_index {
+            if !computing {
+                self.cached_gradient = build_gradient(&self.options);
+                self.cached_plot_points = build_plot_points(&self.entropy_data, &self.options);
             }
+            self.cached_theme_index = self.options.theme_index;
+            ctx.set_visuals(self.options.theme().to_visuals());
         }
 
         // Toolbar (top)
