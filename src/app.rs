@@ -831,7 +831,7 @@ impl eframe::App for App {
                             close = true;
                         }
                     });
-                    ui.label(search_status(
+                    let status = search_status(
                         self.search_rx.is_some(),
                         self.search_operation,
                         self.search_matches.len(),
@@ -839,7 +839,12 @@ impl eframe::App for App {
                         self.search_truncated,
                         self.search_elapsed,
                         self.search_error.as_deref(),
-                    ));
+                    );
+                    if self.search_error.is_some() {
+                        ui.colored_label(self.options.theme().error, &status);
+                    } else {
+                        ui.label(&status);
+                    }
                 });
 
             if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {

@@ -48,6 +48,7 @@ pub struct ColorTheme {
     pub text: Color32,
     pub grid: Color32,
     pub caption: Color32,
+    pub error: Color32,
     pub dark: bool,
     pub hex: HexPalette,
 }
@@ -123,6 +124,7 @@ impl ColorTheme {
             text: Color32::from_rgb(160, 160, 160),
             grid: Color32::from_rgb(50, 50, 50),
             caption: Color32::from_rgb(200, 200, 200),
+            error: Color32::from_rgb(255, 80, 80),
             dark: true,
             hex: HexPalette {
                 null: Color32::from_rgb(90, 90, 90),
@@ -147,6 +149,7 @@ impl ColorTheme {
             text: Color32::from_rgb(60, 60, 60),
             grid: Color32::from_rgb(200, 200, 200),
             caption: Color32::from_rgb(40, 40, 40),
+            error: Color32::from_rgb(200, 30, 30),
             dark: false,
             hex: HexPalette {
                 null: Color32::from_rgb(140, 140, 140),
@@ -171,6 +174,7 @@ impl ColorTheme {
             text: Color32::from_rgb(189, 174, 147),
             grid: Color32::from_rgb(80, 73, 69),
             caption: Color32::from_rgb(235, 219, 178),
+            error: Color32::from_rgb(251, 73, 52),
             dark: true,
             hex: HexPalette {
                 null: Color32::from_rgb(102, 92, 84),
@@ -195,6 +199,7 @@ impl ColorTheme {
             text: Color32::from_rgb(80, 73, 69),
             grid: Color32::from_rgb(213, 196, 161),
             caption: Color32::from_rgb(60, 56, 54),
+            error: Color32::from_rgb(204, 36, 29),
             dark: false,
             hex: HexPalette {
                 null: Color32::from_rgb(168, 153, 132),
@@ -216,6 +221,7 @@ struct ThemeFile {
     text: Option<String>,
     grid: Option<String>,
     caption: Option<String>,
+    error: Option<String>,
     dark: Option<bool>,
     hex: Option<HexPaletteFile>,
 }
@@ -421,6 +427,7 @@ pub fn load_themes() -> Vec<ColorTheme> {
                             text: tf.text.as_deref().and_then(parse_hex_color).unwrap_or(base.text),
                             grid: tf.grid.as_deref().and_then(parse_hex_color).unwrap_or(base.grid),
                             caption: tf.caption.as_deref().and_then(parse_hex_color).unwrap_or(base.caption),
+                            error: tf.error.as_deref().and_then(parse_hex_color).unwrap_or(base.error),
                             dark,
                             hex: HexPalette {
                                 null: hex_file.and_then(|h| h.null.as_deref()).and_then(parse_hex_color).unwrap_or(base.hex.null),
