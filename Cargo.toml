@@ -5,7 +5,7 @@ version = "1.0.0"
 edition = "2024"
 
 [dependencies]
-eframe = { version = "0.33", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+eframe = { version = "0.33", default-features = false, features = ["default_fonts", "glow"] }
 egui = "0.33"
 egui_plot = "0.34"
 clap = { version = "4", features = ["derive"] }
@@ -18,8 +18,19 @@ tiny-skia = "0.11"
 font8x8 = "0.3"
 rfd = "0.15"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+eframe = { version = "0.33", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+
 [profile.dev.package."*"]
 opt-level = 2
+
+[package.metadata.bundle]
+name = "Graphtropy"
+identifier = "com.github.graphtropy"
+icon = ["graphtropy.icns"]
+category = "Utilities"
+short_description = "Interactive binary entropy visualizer"
+long_description = "Fast, lightweight and interactive binary entropy visualizer with hex viewer and PNG exporter"
 
 [profile.release]
 opt-level = 3

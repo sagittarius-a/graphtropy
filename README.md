@@ -1,6 +1,6 @@
 # graphtropy
 
-Fast, lightweight and interactive binary entropy visualizer with an hex viewer and a PNG exporter.
+Fast, lightweight and interactive binary entropy visualizer for Linux and macOS, with an hex viewer and a PNG exporter.
 
 ![GUI](images/gui.png)
 ![Dark theme export](images/bash-dark.png)
@@ -18,16 +18,27 @@ Fast, lightweight and interactive binary entropy visualizer with an hex viewer a
 
 ## Install
 
+### On Linux
+
 ```bash
 ./install.sh
 ```
 
 This builds and installs the binary via `cargo install`, and sets up the `.desktop` file and icon so graphtropy appears in your application launcher and can open files from your file manager.
 
-To only build the binary without desktop integration:
+### On macOS
 
+```bash
+./install.sh
 ```
-cargo install --path .
+
+This creates an app bundle with proper icon support and installs it to `/Applications`. The app will appear with its icon in the Command+Tab app switcher.
+
+Alternatively, to just build without installing:
+
+```bash
+cargo build --release
+./target/release/graphtropy
 ```
 
 ## Usage

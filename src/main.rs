@@ -79,6 +79,11 @@ pub fn auto_adapt(file_size: usize, block_size: usize, step: usize) -> (usize, u
     (block_size, new_step, true)
 }
 
+fn app_icon() -> egui::IconData {
+    eframe::icon_data::from_png_bytes(include_bytes!("../images/icon.png"))
+        .expect("embedded application icon must be a valid PNG")
+}
+
 fn main() -> eframe::Result {
     let cli = Cli::parse();
 
@@ -181,7 +186,9 @@ fn main() -> eframe::Result {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1200.0, 1000.0]),
+            .with_inner_size([1200.0, 1000.0])
+            // eframe sets its default icon at runtime if none is provided.
+            .with_icon(app_icon()),
         ..Default::default()
     };
 
