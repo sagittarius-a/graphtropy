@@ -11,6 +11,7 @@ egui_plot = "0.34"
 clap = { version = "4", features = ["derive"] }
 rayon = "1"
 memmap2 = "0.9"
+memchr = "2"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 dirs = "6"

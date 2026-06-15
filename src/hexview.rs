@@ -46,6 +46,10 @@ pub fn render(
     focused: &mut bool,
     selection: &mut Option<(usize, usize)>,
     hex_palette: Option<&HexPalette>,
+    center_offset: &mut Option<usize>,
+    search_matches: &[usize],
+    search_match_len: usize,
+    selected_search_match: Option<usize>,
 ) -> u64 {
     let total_rows = data.len().div_ceil(BYTES_PER_ROW);
     let font_size = ui.text_style_height(&TextStyle::Monospace);
@@ -108,9 +112,18 @@ pub fn render(
         }
     }
 
+    if let Some(offset) = center_offset.take() {
+        let target_row = offset / BYTES_PER_ROW;
+        *first_row = target_row
+            .saturating_sub(visible_rows / 2)
+            .min(max_first_row);
+    }
+
     *first_row = (*first_row).min(max_first_row);
     let cursor_row = cursor_offset as usize / BYTES_PER_ROW;
     let end_row = (*first_row + visible_rows).min(total_rows);
+    let visible_start = *first_row * BYTES_PER_ROW;
+    let visible_end = (end_row * BYTES_PER_ROW).min(data.len());
 
     // Interaction
     let content_response = ui.allocate_rect(content_rect, Sense::click_and_drag());
@@ -199,6 +212,27 @@ pub fn render(
     let weak = ui.visuals().weak_text_color();
     let highlight = ui.visuals().selection.stroke.color;
     let sel_bg = ui.visuals().selection.bg_fill;
+    let search_bg = if ui.visuals().dark_mode {
+        Color32::from_rgb(90, 75, 20)
+    } else {
+        Color32::from_rgb(255, 225, 120)
+    };
+    let selected_search_bg = if ui.visuals().dark_mode {
+        Color32::from_rgb(150, 95, 20)
+    } else {
+        Color32::from_rgb(255, 170, 65)
+    };
+
+    let search_match_len = search_match_len.max(1);
+    let visible_match_range = if search_matches.is_empty() {
+        0..0
+    } else {
+        let first = search_matches.partition_point(|&offset| {
+            offset.saturating_add(search_match_len) <= visible_start
+        });
+        let last = search_matches.partition_point(|&offset| offset < visible_end);
+        first..last
+    };
 
     let painter = ui.painter_at(content_rect);
 
@@ -208,6 +242,41 @@ pub fn render(
         let row_data = &data[offset..end];
         let is_cursor_row = row_idx == cursor_row;
         let y = content_rect.top() + (row_idx - *first_row) as f32 * row_height;
+
+        for (relative_match_idx, &match_start) in search_matches[visible_match_range.clone()]
+            .iter()
+            .enumerate()
+        {
+            let match_idx = visible_match_range.start + relative_match_idx;
+            let match_end = match_start.saturating_add(search_match_len);
+            if match_end <= offset || match_start >= end {
+                continue;
+            }
+
+            let lo = match_start.max(offset);
+            let hi = match_end.min(end);
+            let fill = if selected_search_match == Some(match_idx) {
+                selected_search_bg
+            } else {
+                search_bg
+            };
+
+            for global_idx in lo..hi {
+                let i = global_idx - offset;
+                let bx = byte_hex_x(i);
+                let ax = ascii_x + (1 + i) as f32 * char_w;
+                painter.rect_filled(
+                    Rect::from_min_size(pos2(bx - 1.0, y), vec2(2.0 * char_w + 2.0, row_height)),
+                    2.0,
+                    fill,
+                );
+                painter.rect_filled(
+                    Rect::from_min_size(pos2(ax, y), vec2(char_w, row_height)),
+                    0.0,
+                    fill,
+                );
+            }
+        }
 
         let offset_color = if is_cursor_row { highlight } else { weak };
         painter.text(
