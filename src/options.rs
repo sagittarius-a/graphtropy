@@ -206,39 +206,6 @@ impl ColorTheme {
         }
     }
 
-    fn gruvbox_dark() -> Self {
-        ColorTheme {
-            name: "Gruvbox Dark".to_string(),
-            bands: vec![
-                (0.0, Color32::from_rgb(69, 133, 136)),   // aqua
-                (0.25, Color32::from_rgb(152, 151, 26)),   // green
-                (0.625, Color32::from_rgb(214, 93, 14)),   // orange
-                (0.875, Color32::from_rgb(204, 36, 29)),   // red
-            ],
-            bg: Color32::from_rgb(40, 40, 40),             // bg0
-            text: Color32::from_rgb(189, 174, 147),        // fg3
-            grid: Color32::from_rgb(80, 73, 69),           // bg2
-            caption: Color32::from_rgb(235, 219, 178),     // fg1
-            dark: true,
-        }
-    }
-
-    fn gruvbox_light() -> Self {
-        ColorTheme {
-            name: "Gruvbox Light".to_string(),
-            bands: vec![
-                (0.0, Color32::from_rgb(7, 102, 120)),     // aqua
-                (0.25, Color32::from_rgb(121, 116, 14)),    // green
-                (0.625, Color32::from_rgb(175, 58, 3)),     // orange
-                (0.875, Color32::from_rgb(157, 0, 6)),      // red
-            ],
-            bg: Color32::from_rgb(251, 241, 199),           // bg0
-            text: Color32::from_rgb(80, 73, 69),            // fg2
-            grid: Color32::from_rgb(213, 196, 161),         // bg2
-            caption: Color32::from_rgb(60, 56, 54),         // fg1
-            dark: false,
-        }
-    }
 }
 
 #[derive(Deserialize)]
