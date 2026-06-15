@@ -16,6 +16,10 @@ type GradientFn = Arc<dyn Fn(PlotPoint) -> Color32 + Send + Sync>;
 const MAX_SEARCH_RESULTS: usize = 100_000;
 const SEARCH_CHUNK_SIZE: usize = 64 * 1024 * 1024;
 
+fn evict_mmap_pages(mmap: &Mmap) {
+    unsafe { let _ = mmap.unchecked_advise(memmap2::UncheckedAdvice::DontNeed); }
+}
+
 pub struct FileInfo {
     pub path: PathBuf,
     pub size: u64,
@@ -63,6 +67,8 @@ pub struct App {
     hex_focused: bool,
     hex_selection: Option<(usize, usize)>,
     hex_center_offset: Option<usize>,
+    search_open: bool,
+    search_focus: bool,
     options: Options,
     view_x_min: f64,
     view_x_max: f64,
@@ -92,6 +98,7 @@ pub struct App {
     search_truncated: bool,
     search_elapsed: Option<Duration>,
     search_error: Option<String>,
+    search_case_sensitive: bool,
 }
 
 fn spawn_compute(
@@ -126,17 +133,21 @@ fn spawn_search_next(
     needle: Vec<u8>,
     start: usize,
     generation: u64,
+    case_sensitive: bool,
 ) -> mpsc::Receiver<SearchResult> {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
+        let _ = mmap.advise(memmap2::Advice::Sequential);
         let started = Instant::now();
-        let finder = memchr::memmem::Finder::new(&needle);
         let offset = if start >= mmap.len() {
             None
+        } else if case_sensitive {
+            memchr::memmem::find(&mmap[start..], &needle).map(|o| start + o)
         } else {
-            finder.find(&mmap[start..]).map(|offset| start + offset)
+            find_case_insensitive(&mmap[start..], &needle).map(|o| start + o)
         };
 
+        evict_mmap_pages(&mmap);
         let _ = tx.send(SearchResult {
             generation,
             operation: SearchOperation::Next,
@@ -153,16 +164,24 @@ fn spawn_search_previous(
     needle: Vec<u8>,
     end: usize,
     generation: u64,
+    case_sensitive: bool,
 ) -> mpsc::Receiver<SearchResult> {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
+        let _ = mmap.advise(memmap2::Advice::Sequential);
         let started = Instant::now();
         let offset = if end == 0 {
             None
         } else {
-            memchr::memmem::rfind(&mmap[..end.min(mmap.len())], &needle)
+            let slice = &mmap[..end.min(mmap.len())];
+            if case_sensitive {
+                memchr::memmem::rfind(slice, &needle)
+            } else {
+                rfind_case_insensitive(slice, &needle)
+            }
         };
 
+        evict_mmap_pages(&mmap);
         let _ = tx.send(SearchResult {
             generation,
             operation: SearchOperation::Previous,
@@ -174,16 +193,63 @@ fn spawn_search_previous(
     rx
 }
 
+fn find_case_insensitive(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() || haystack.len() < needle.len() {
+        return None;
+    }
+    let lower = needle[0];
+    let upper = lower.to_ascii_uppercase();
+    let mut pos = 0;
+    while pos + needle.len() <= haystack.len() {
+        if let Some(i) = memchr::memchr2(lower, upper, &haystack[pos..]) {
+            let start = pos + i;
+            if start + needle.len() > haystack.len() {
+                return None;
+            }
+            if haystack[start..start + needle.len()]
+                .iter()
+                .zip(needle)
+                .all(|(a, b)| a.to_ascii_lowercase() == *b)
+            {
+                return Some(start);
+            }
+            pos = start + 1;
+        } else {
+            return None;
+        }
+    }
+    None
+}
+
+fn rfind_case_insensitive(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() || haystack.len() < needle.len() {
+        return None;
+    }
+    for start in (0..=haystack.len() - needle.len()).rev() {
+        if haystack[start..start + needle.len()]
+            .iter()
+            .zip(needle)
+            .all(|(a, b)| a.to_ascii_lowercase() == *b)
+        {
+            return Some(start);
+        }
+    }
+    None
+}
+
 fn spawn_search_all(
     mmap: Arc<Mmap>,
     needle: Vec<u8>,
     generation: u64,
+    case_sensitive: bool,
 ) -> mpsc::Receiver<SearchResult> {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
+        let _ = mmap.advise(memmap2::Advice::Sequential);
         let started = Instant::now();
-        let (matches, truncated) = search_all_parallel(&mmap, &needle);
+        let (matches, truncated) = search_all_parallel(&mmap, &needle, case_sensitive);
 
+        evict_mmap_pages(&mmap);
         let _ = tx.send(SearchResult {
             generation,
             operation: SearchOperation::All,
@@ -195,7 +261,7 @@ fn spawn_search_all(
     rx
 }
 
-fn search_all_parallel(mmap: &[u8], needle: &[u8]) -> (Vec<usize>, bool) {
+fn search_all_parallel(mmap: &[u8], needle: &[u8], case_sensitive: bool) -> (Vec<usize>, bool) {
     use rayon::prelude::*;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
@@ -213,27 +279,37 @@ fn search_all_parallel(mmap: &[u8], needle: &[u8]) -> (Vec<usize>, bool) {
             let chunk_start = chunk_idx * SEARCH_CHUNK_SIZE;
             let chunk_end = ((chunk_idx + 1) * SEARCH_CHUNK_SIZE).min(mmap.len());
             let scan_end = chunk_end.saturating_add(overlap).min(mmap.len());
-            let finder = memchr::memmem::Finder::new(needle);
             let mut chunk_matches = Vec::new();
+            let slice = &mmap[chunk_start..scan_end];
 
-            for relative_offset in finder.find_iter(&mmap[chunk_start..scan_end]) {
+            let mut scan = |relative_offset: usize| -> bool {
                 if match_count.load(Ordering::Relaxed) >= MAX_SEARCH_RESULTS {
                     truncated.store(true, Ordering::Relaxed);
-                    break;
+                    return false;
                 }
-
                 let offset = chunk_start + relative_offset;
                 if offset >= chunk_end {
-                    continue;
+                    return true;
                 }
-
                 let previous_count = match_count.fetch_add(1, Ordering::Relaxed);
                 if previous_count >= MAX_SEARCH_RESULTS {
                     truncated.store(true, Ordering::Relaxed);
-                    break;
+                    return false;
                 }
-
                 chunk_matches.push(offset);
+                true
+            };
+
+            if case_sensitive {
+                for relative_offset in memchr::memmem::find_iter(slice, needle) {
+                    if !scan(relative_offset) { break; }
+                }
+            } else {
+                let mut pos = 0;
+                while let Some(i) = find_case_insensitive(&slice[pos..], needle) {
+                    if !scan(pos + i) { break; }
+                    pos += i + 1;
+                }
             }
 
             chunk_matches
@@ -271,6 +347,8 @@ impl App {
             hex_focused: false,
             hex_selection: None,
             hex_center_offset: None,
+            search_open: false,
+            search_focus: false,
             options,
             view_x_min: 0.0,
             view_x_max: x_max,
@@ -300,6 +378,7 @@ impl App {
             search_truncated: false,
             search_elapsed: None,
             search_error: None,
+            search_case_sensitive: false,
         }
     }
 
@@ -315,7 +394,7 @@ impl App {
         self.search_rx = None;
         self.search_operation = None;
 
-        let needle = match parse_search_query(&self.search_query, self.search_mode) {
+        let needle = match parse_search_query(&self.search_query, self.search_mode, self.search_case_sensitive) {
             Ok(needle) => needle,
             Err(error) => {
                 self.search_error = Some(error);
@@ -329,10 +408,12 @@ impl App {
 
         self.search_needle_len = needle.len();
         self.search_operation = Some(SearchOperation::All);
+        let case_sensitive = self.search_case_sensitive || self.search_mode == SearchMode::Hex;
         self.search_rx = Some(spawn_search_all(
             self.mmap.clone(),
             needle,
             self.search_generation,
+            case_sensitive,
         ));
     }
 
@@ -379,7 +460,7 @@ impl App {
         self.search_rx = None;
         self.search_operation = None;
 
-        let needle = match parse_search_query(&self.search_query, self.search_mode) {
+        let needle = match parse_search_query(&self.search_query, self.search_mode, self.search_case_sensitive) {
             Ok(needle) => needle,
             Err(error) => {
                 self.search_error = Some(error);
@@ -395,6 +476,7 @@ impl App {
         self.search_matches.clear();
         self.search_needle_len = needle.len();
         self.search_operation = Some(operation);
+        let case_sensitive = self.search_case_sensitive || self.search_mode == SearchMode::Hex;
 
         self.search_rx = Some(match operation {
             SearchOperation::Next => {
@@ -405,7 +487,7 @@ impl App {
                     cursor_offset
                 }
                 .min(self.mmap.len());
-                spawn_search_next(self.mmap.clone(), needle, start, self.search_generation)
+                spawn_search_next(self.mmap.clone(), needle, start, self.search_generation, case_sensitive)
             }
             SearchOperation::Previous => {
                 let cursor_offset = self.cursor_offset as usize;
@@ -415,7 +497,7 @@ impl App {
                     cursor_offset.saturating_add(1)
                 }
                 .min(self.mmap.len());
-                spawn_search_previous(self.mmap.clone(), needle, end, self.search_generation)
+                spawn_search_previous(self.mmap.clone(), needle, end, self.search_generation, case_sensitive)
             }
             SearchOperation::All => unreachable!("All uses start_search_all"),
         });
@@ -533,7 +615,7 @@ impl eframe::App for App {
             egui::Window::new("Export graph")
                 .collapsible(false)
                 .resizable(false)
-                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .default_pos(ctx.content_rect().center())
                 .show(ctx, |ui| {
                     ui.label("Output path:");
                     ui.horizontal(|ui| {
@@ -632,6 +714,21 @@ impl eframe::App for App {
             self.goto_focus = true;
         }
 
+        // Ctrl+F opens search dialog, or finds next if already open
+        if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::F)) {
+            if self.search_open {
+                self.start_search_next();
+            } else {
+                self.search_open = true;
+                self.search_focus = true;
+            }
+        }
+
+        // Ctrl+P finds previous (only when search is open)
+        if self.search_open && ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::P)) {
+            self.start_search_previous();
+        }
+
         // "Go to offset" modal window
         if self.goto_open {
             let mut jump_to = None;
@@ -640,7 +737,7 @@ impl eframe::App for App {
             egui::Window::new("Go to offset")
                 .collapsible(false)
                 .resizable(false)
-                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .default_pos(ctx.content_rect().center())
                 .show(ctx, |ui| {
                     ui.label("Enter offset (hex: 0x... or plain decimal):");
                     let re = ui.text_edit_singleline(&mut self.goto_input);
@@ -677,6 +774,82 @@ impl eframe::App for App {
             }
         }
 
+        // Search dialog
+        if self.search_open {
+            let mut close = false;
+
+            egui::Window::new("Search")
+                .collapsible(false)
+                .resizable(false)
+                .default_pos(ctx.content_rect().center())
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        let ascii_changed = ui
+                            .selectable_value(&mut self.search_mode, SearchMode::Ascii, "ASCII")
+                            .changed();
+                        let hex_changed = ui
+                            .selectable_value(&mut self.search_mode, SearchMode::Hex, "Hex")
+                            .changed();
+                        if ascii_changed || hex_changed {
+                            self.clear_search_results();
+                        }
+                        if self.search_mode == SearchMode::Ascii {
+                            if ui.checkbox(&mut self.search_case_sensitive, "Case sensitive").changed() {
+                                self.clear_search_results();
+                            }
+                        }
+                    });
+                    let re = ui.add(
+                        egui::TextEdit::singleline(&mut self.search_query)
+                            .hint_text("text or hex bytes"),
+                    );
+                    if self.search_focus {
+                        re.request_focus();
+                        self.search_focus = false;
+                    }
+                    if re.changed() {
+                        self.clear_search_results();
+                    }
+                    if re.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        if ui.input(|i| i.modifiers.shift) {
+                            self.start_search_previous();
+                        } else {
+                            self.start_search_next();
+                        }
+                    }
+                    ui.horizontal(|ui| {
+                        if ui.button("All").on_hover_text("Find all matches").clicked() {
+                            self.start_search_all();
+                        }
+                        if ui.button("Prev").on_hover_text("Previous match (Ctrl+P)").clicked() {
+                            self.start_search_previous();
+                        }
+                        if ui.button("Next").on_hover_text("Next match (Ctrl+F)").clicked() {
+                            self.start_search_next();
+                        }
+                        if ui.button("Close").on_hover_text("Close (Esc)").clicked() {
+                            close = true;
+                        }
+                    });
+                    ui.label(search_status(
+                        self.search_rx.is_some(),
+                        self.search_operation,
+                        self.search_matches.len(),
+                        self.search_selected,
+                        self.search_truncated,
+                        self.search_elapsed,
+                        self.search_error.as_deref(),
+                    ));
+                });
+
+            if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+                close = true;
+            }
+            if close {
+                self.search_open = false;
+            }
+        }
+
         if self.options.needs_recompute && !computing {
             self.options.needs_recompute = false;
             self.compute_rx = Some(spawn_compute(
@@ -707,6 +880,10 @@ impl eframe::App for App {
                     self.goto_open = true;
                     self.goto_input.clear();
                     self.goto_focus = true;
+                }
+                if ui.button("Search (Ctrl+F)").clicked() {
+                    self.search_open = true;
+                    self.search_focus = true;
                 }
                 if ui.button("Export (Ctrl+S)").clicked() {
                     self.export_open = true;
@@ -760,50 +937,6 @@ impl eframe::App for App {
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     self.options.render_panel(ui, &self.entropy_data);
-
-                    ui.separator();
-                    ui.heading("Search");
-                    ui.horizontal(|ui| {
-                        let ascii_changed = ui
-                            .selectable_value(&mut self.search_mode, SearchMode::Ascii, "ASCII")
-                            .changed();
-                        let hex_changed = ui
-                            .selectable_value(&mut self.search_mode, SearchMode::Hex, "Hex")
-                            .changed();
-                        if ascii_changed || hex_changed {
-                            self.clear_search_results();
-                        }
-                    });
-                    let response = ui.add(
-                        egui::TextEdit::singleline(&mut self.search_query)
-                            .hint_text("text or hex bytes"),
-                    );
-                    if response.changed() {
-                        self.clear_search_results();
-                    }
-                    if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                        self.start_search_next();
-                    }
-                    ui.horizontal(|ui| {
-                        if ui.button("All").clicked() {
-                            self.start_search_all();
-                        }
-                        if ui.button("Prev").clicked() {
-                            self.start_search_previous();
-                        }
-                        if ui.button("Next").clicked() {
-                            self.start_search_next();
-                        }
-                    });
-                    ui.label(search_status(
-                        self.search_rx.is_some(),
-                        self.search_operation,
-                        self.search_matches.len(),
-                        self.search_selected,
-                        self.search_truncated,
-                        self.search_elapsed,
-                        self.search_error.as_deref(),
-                    ));
                 });
             });
 
@@ -878,9 +1011,15 @@ impl eframe::App for App {
     }
 }
 
-fn parse_search_query(query: &str, mode: SearchMode) -> Result<Vec<u8>, String> {
+fn parse_search_query(query: &str, mode: SearchMode, case_sensitive: bool) -> Result<Vec<u8>, String> {
     match mode {
-        SearchMode::Ascii => Ok(query.as_bytes().to_vec()),
+        SearchMode::Ascii => {
+            if case_sensitive {
+                Ok(query.as_bytes().to_vec())
+            } else {
+                Ok(query.to_ascii_lowercase().as_bytes().to_vec())
+            }
+        }
         SearchMode::Hex => parse_hex_query(query),
     }
 }
